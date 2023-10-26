@@ -1,0 +1,100 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[ ]:
+
+
+import pandas as pd
+import numpy as np
+
+
+# In[ ]:
+
+
+# Function to calculate IV for discrete and conitnous variables on a binary target variable ("Good"/"Bad")
+
+
+# In[ ]:
+
+
+def calc_iv_num(df2,feature, target):
+    df=df2.copy()
+    print(feature)
+    lst = []
+    df[feature] = df[feature].replace([np.inf,-np.inf],np.nan)
+    df[feature] = df[feature].fillna(0)
+    df[feature] = pd.to_numeric(df[feature],errors='coerce')
+    #Split conitnous variables into max 10 bins based on percentile
+    df[feature+'_bin'] = pd.qcut(df[feature],q=10,duplicates='drop')
+    for i in range(df[feature+'_bin'].nunique()):
+        val = list(df[feature+'_bin'].unique())[i]
+        lst.append([feature,
+                   val,
+                   df[df[feature+'_bin']==val].count()[feature],
+                   df[(df[feature+'_bin']==val) & (df[target]=='Good')].count()[feature],
+                   df[(df[feature+'_bin']==val) & (df[target]=='Bad')].count()[feature]])
+    data = pd.DataFrame(lst,columns=['Variable','Value','All','Goods','Bads'])
+    data['Share'] = data['All'] / data['All'].sum()
+    data['Bad Rate'] = data['Bads'] / data['All']
+    data['Distribution Good'] = (data['All'] - data['Bads'])/(data['All'].sum() - data['Bads'].sum())
+    data['Distribution Bad'] = data['Bads']/data['Bads'].sum()
+    data['WoE']=np.log(data['Distribution Good']/data['Distribution Bad'])
+    data = data.replace({'WoE':{np.inf:0,-np.inf:0}})
+    data['IV_bin']=data['WoE']*(data['Distribution Good'] - data['Distribution Bad'])
+    data = data.sort_values(by = ['Variable','Value'],ascending = [True,True])
+    data.index = range(len(data.index))
+    data['IV']=data['IV_bin'].sum()
+    
+    return data
+
+def calc_iv_cat(df2,feature, target):
+    df=df2.copy()
+    print(feature)
+    lst = []
+    # Ignore features having more than 100 unique values
+    if df[feature].nunique()>100:
+        return pd.DataFrame()
+    df[feature] = df[feature].fillna(0)
+    df[feature+'_bin'] = df[feature]
+    for i in range(df[feature+'_bin'].nunique()):
+        val = list(df[feature+'_bin'].unique())[i]
+        lst.append([feature,
+                   val,
+                   df[df[feature+'_bin']==val].count()[feature],
+                   df[(df[feature+'_bin']==val) & (df[target]=='Good')].count()[feature],
+                   df[(df[feature+'_bin']==val) & (df[target]=='Bad')].count()[feature]])
+    data = pd.DataFrame(lst,columns=['Variable','Value','All','Goods','Bads'])
+    data['Share'] = data['All'] / data['All'].sum()
+    data['Bad Rate'] = data['Bads'] / data['All']
+    data['Distribution Good'] = (data['All'] - data['Bads'])/(data['All'].sum() - data['Bads'].sum())
+    data['Distribution Bad'] = data['Bads']/data['Bads'].sum()
+    data['WoE']=np.log(data['Distribution Good']/data['Distribution Bad'])
+    data = data.replace({'WoE':{np.inf:0,-np.inf:0}})
+    data['IV_bin']=data['WoE']*(data['Distribution Good'] - data['Distribution Bad'])
+    #data = data.sort_values(by = ['Variable','Value'],ascending = [True,True])
+    data.index = range(len(data.index))
+    data['IV']=data['IV_bin'].sum()
+    
+    return data
+
+
+def iterate_vars_iv(df,target):
+    data = pd.DataFrame()
+#     df=df[,2:]
+    varlist = list(df.columns)
+   # varlist = varlist[2:]
+    for i in varlist:
+        if df[str(i)].dtype == 'int' or  df[str(i)].dtype == 'float':
+            data = data.append(calc_iv_num(df,str(i),target))
+        else:
+            data = data.append(calc_iv_cat(df,str(i),target))
+    return data
+              
+
+
+# In[ ]:
+
+
+iv_output = iterate_vars_iv(df,'target_final')
+iv_output.to_csv('IV_Output.csv')
+
